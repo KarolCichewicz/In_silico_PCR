@@ -1,6 +1,6 @@
 
-#edit22
-
+#edit22# 
+er 
 #https://docs.github.com/en/github/importing-your-projects-to-github/adding-an-existing-project-to-github-using-the-command-line
 
 setwd("G:/Shared drives/Nord Lab - Data/SFRI00/ASD1000/ASD1KV5/Karol")
