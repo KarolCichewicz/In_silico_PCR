@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1595546467775.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "3B773EB3",
+    "lastKnownWriteTime" : 1595563673,
+    "last_content_update" : 1595563673837,
+    "path" : "C:/Users/Karol/Desktop/GitHub Repos/In_silico_PCR/In_silico_PCR_GRCh38_local_job_test_short.R",
+    "project_path" : "In_silico_PCR_GRCh38_local_job_test_short.R",
+    "properties" : {
+        "cursorPosition" : "3,128",
+        "scrollLine" : "0"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

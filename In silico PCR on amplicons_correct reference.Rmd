@@ -1,0 +1,714 @@
+---
+title: "Untitled"
+author: "Karol Cichewicz"
+date: "6/8/2020"
+output: html_document
+---
+
+# Approach I: Amplicon sequence finder running on predetermined chromosomes 
+
+The amplicon primers were designed on GRCh37 genome, whereas the alignment template was GRCh38.
+In islico PCR was run on GRCh37 to verify if the approach works/ allele match with and in the amplicon sequence, which they do.
+SNV coordinates were lifted over to GRCh38 and a 1700 bp window around them was used for counting ASD1k amplicon reads. STAR408, ASD30/10 have exact amplicon annotations. (personal communication with Linda Su-Feher).
+
+I run PCR 
+
+# GRCh37
+
+```{r}
+####
+# This is very neat! Instead of looping through all primer pairs and chromosomes it only focuses on the chromosomes predetermined by primer3. It does not allow for any by-product discovery, but it's a great approach for getting end coordinates and amplicon seqs. It could be even faster if limited to regions ~ +/- 2kb from SNVs.
+
+setwd("G:/Shared drives/Nord Lab - Data/SFRI00/ASD1000/ASD1KV5/Karol")
+
+library(seqinr)
+library(DECIPHER)  # Requires dependencies. Read documentation.
+library(stringr)
+library(dplyr)
+library(parallel)
+library(data.table)
+library(matrixStats)
+library(ggplot2)
+library(ggdark)
+
+
+source("AmplifyDNA_3.R")
+
+# Reads amplicon metadata. Only P0 primers were ordered. [,c(1:9)] removes the other primer sets.
+amplicons <- read.table("2018-05-08_Combined-SFARI1000-Primers.txt", header = TRUE)[,c(1:9)]
+amplicons <- filter(amplicons, P0_Left != "." & P0_Right != ".") #Removes SNVs for which primer3 could not design
+
+# Primer pair list
+primers_2 <- lapply(1:nrow(amplicons), function(x) c(amplicons$P0_Left[x], amplicons$P0_Right[x], amplicons$CHROMOSOME[x], amplicons$UNIQID[x], amplicons$START[x]))
+
+# Reads chromosome reference files
+chr_1 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.1.fa.gz"), format="fasta")
+chr_2 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.2.fa.gz"), format="fasta")
+chr_3 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.3.fa.gz"), format="fasta")
+chr_4 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.4.fa.gz"), format="fasta")
+chr_5 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.5.fa.gz"), format="fasta")
+chr_6 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.6.fa.gz"), format="fasta")
+chr_7 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.7.fa.gz"), format="fasta")
+chr_8 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.8.fa.gz"), format="fasta")
+chr_9 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.9.fa.gz"), format="fasta")
+chr_10 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.10.fa.gz"), format="fasta")
+chr_11 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.11.fa.gz"), format="fasta")
+chr_12 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.12.fa.gz"), format="fasta")
+chr_13 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.13.fa.gz"), format="fasta")
+chr_14 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.14.fa.gz"), format="fasta")
+chr_15 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.15.fa.gz"), format="fasta")
+chr_16 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.16.fa.gz"), format="fasta")
+chr_17 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.17.fa.gz"), format="fasta")
+chr_18 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.18.fa.gz"), format="fasta")
+chr_19 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.19.fa.gz"), format="fasta")
+chr_20 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.20.fa.gz"), format="fasta")
+chr_21 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.21.fa.gz"), format="fasta")
+chr_22 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.22.fa.gz"), format="fasta")
+#chr_23 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.X.fa.gz"), #format="fasta")
+#chr_24 <- readDNAStringSet(filepath = c("Chromosomes_GRCh37/Homo_sapiens.GRCh37.dna_sm.chromosome.Y.fa.gz"), #format="fasta")
+
+chromosomes <- list(chr_1, chr_2, chr_3, chr_4, chr_5, chr_6, chr_7, chr_8, chr_9, chr_10, chr_11, chr_12, chr_13, chr_14, chr_15, chr_16, chr_17, chr_18, chr_19, chr_20, chr_21, chr_22)
+
+
+#I'll split the process saving the output into two files, with range indicators:
+range_start = 1
+range_end = nrow(amplicons)
+
+# In silicon function settings
+maxProductSize = 1500
+annealingTemp = 57 
+P = 4e-7
+ions = 0.2
+includePrimers = TRUE
+minEfficiency = 0.95
+
+
+# Performance notes
+# 2.817841 mins for 20 primers
+# 4.912082 min for 40 primers
+
+in_silico_products <- lapply(primers_2[range_start:range_end], function(y){
+  
+  expected_chrom <- as.numeric(y[[3]])
+  UNIQID <- y[[4]]
+  
+  # Thic can be used to limit seq to 5kb around SNV, but It messes up the genomic coordinates, :/
+  #expected_SNV_START <- as.numeric(y[[5]])
+  #substr(chromosomes[[expected_chrom]], expected_SNV_START - 5000, expected_SNV_START + 5000)
+  
+  PCR_prod <- AmplifyDNA_3(y[1:2], chromosomes[[expected_chrom]], 
+                maxProductSize = 1500, 
+                  annealingTemp = 60, 
+                      P = 4e-7,              # molar concentration of primers in the reaction
+                      ions = 0.2,            # molar sodium equivalent ionic concentration
+                      includePrimers = TRUE, 
+                      minEfficiency = 0.95)
+  
+  if ( any(str_length(as.character(PCR_prod))) == TRUE ) { # checks if there is any PCR prod  
+    prod_seq <- as.character(as.character(PCR_prod))
+    start <-   start(PCR_prod)
+    end <-   end(PCR_prod)
+    width <-   width(PCR_prod)
+    efficiency <- names(as.character(PCR_prod))
+    
+    df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = as.numeric(y[[3]]), 
+                     "Amplicon_Start" = start, 
+                     "Amplicon_End" = end, 
+                     "Amplicon_length" = width, 
+                     "PCR_efficiency" = efficiency, 
+                     "Sequence" = prod_seq)
+    df
+  }
+  else{
+   df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = NA, 
+                     "Amplicon_Start" = NA, 
+                     "Amplicon_End" = NA, 
+                     "Amplicon_length" = NA, 
+                     "PCR_efficiency" = NA, 
+                     "Sequence" = NA)
+    df
+  }
+})
+
+
+m <- as.data.frame(rbindlist(in_silico_products))
+
+final_df <- merge(amplicons[c(range_start:range_end),], m, by = "UNIQID", all.x = TRUE, all.y = TRUE)
+
+write.csv(file=paste0("Amplicons_w_edge_coordinates_and_seq_pre_def_chrom_GRCh37", "_", range_start, "_to_", range_end, ".csv"), final_df)
+
+```
+
+
+```{r}
+# Extracts allele bases assigning sibling/proband identity from UNIQID
+
+amplicons <- read.table("2018-05-08_Combined-SFARI1000-Primers.txt", header = TRUE)[,c(1:9)]
+amplicons <- filter(amplicons, P0_Left != "." & P0_Right != ".") #Removes SNVs for which primer3 could not design
+
+# Extract reference and alternate allele bases from UNIQID
+library(tidyverse)
+
+alleles <- sub(pattern = "^\\d+_\\d+_\\d+_([ATCG]*)_([ATCG]*)_\\d+.(\\w)\\d$", replacement = "\\1 \\2 \\3", amplicons[,1], perl = TRUE)
+
+alleles_df <- as.data.frame(alleles)
+df <- alleles_df %>% separate(alleles, c("Ref_allele", "Var_allele", "Subject"))
+df$Subject <- ifelse(df$Subject == "p", "proband", "sibling")
+
+# Sanity checks
+# numbers following s or p are all 1
+#unique(sub(pattern = "^\\d+_\\d+_\\d+_([ATCG]*)_([ATCG]*)_\\d+.\\w(\\d+)$", replacement = "\\3", amplicons[,1], perl = TRUE))
+#nrow(df) == nrow(final_df)
+
+amplicons <- data.frame(amplicons, df)
+
+```
+
+```{r}
+# Extract DNA base from the chromosome files and checks if it matches the allele bases - another sanity check of the method.
+# Since I'm not sure if the START or END coordinate match the position I'll extract both  
+
+d <- sapply(1:nrow(amplicons), function(x){
+  chrom <- amplicons$CHROMOSOME[x]
+  as.character(as.character(subseq(chromosomes[[chrom]], start = amplicons$START[x], end = amplicons$END[x])))
+})
+
+amplicons$START_STOP_seq <- d
+
+# END column base denotes reference allele. 
+head(amplicons[,c("Ref_allele", "START_STOP_seq")], 30)
+
+```
+
+
+```{r}
+
+# Find and marks duplicated amplicons, aka non-unique UNIQID. There are 28 amplicons with unique IDS, but duplicated coordinates.
+
+# Function duplicated returns TRUE for the second and following replicated elements, skipping the first one. I haven't found a simpler solution than presented below. This may be one of these small annoyances of R.
+  
+#a <- c(TRUE, FALSE, TRUE, FALSE)
+#b <- c(TRUE, TRUE, FALSE, FALSE)
+
+a <- duplicated(paste0(amplicons$CHROMOSOME,":", amplicons$START, "-", amplicons$END))
+b <- duplicated(paste0(amplicons$CHROMOSOME,":", amplicons$START, "-", amplicons$END), fromLast = TRUE)
+c <- ifelse((a + b) > 0, TRUE, FALSE)
+
+amplicons$Duplicated_amp_coordinates <- c
+
+filter(amplicons, Duplicated_amp_coordinates == TRUE)
+
+```
+
+
+
+
+# Approach II: Amplicon sequence finder running on all chromosomes 
+
+This approach is tested for handlign multiple PCR products
+
+```{r}
+
+library(seqinr)
+library(DECIPHER)
+library(stringr)
+library(dplyr)
+library(parallel)
+library(future.apply)
+
+source("AmplifyDNA_2.R")
+
+# Below is just for testing  how the function behaves with non unique amplicons.
+#non_unique_amplicons <- filter(amplicons, UNIQID %in% unique(dup_ID_df$UNIQID))
+#primers_3 <- lapply(1:nrow(non_unique_amplicons), function(x) c(non_unique_amplicons$P0_Left[x], #non_unique_amplicons$P0_Right[x], non_unique_amplicons$CHROMOSOME[x], #non_unique_amplicons$UNIQID[x]))  
+
+#Global settings for future_apply
+options(future.globals.maxSize = +Inf)
+plan(multiprocess)
+  
+range_start = 1
+range_end = 500
+
+#It took 8.280362 hours to run the first 500  
+
+t <- Sys.time()
+
+in_silico_products <- lapply(primers_2[range_start:range_end], function(y){
+  
+  #y <- primers_3[[1]]  
+  
+  UNIQID <- y[4]
+
+  PCR_prod <- future_lapply(chromosomes, function(x) AmplifyDNA_2(y[1:2], x, 
+                      maxProductSize = 1500, 
+                      annealingTemp = 57, 
+                      P = 4e-7,              # molar concentration of primers in the reaction
+                      ions = 0.2,            # molar sodium equivalent ionic concentration
+                      includePrimers = TRUE, 
+                      minEfficiency = 0.90))  # The efficiency is set to a high value
+  
+  if ( any(str_length(as.character(PCR_prod))) == TRUE ) { # checks if there is any PCR prod  
+    
+    chrom <- which(unlist(lapply(PCR_prod, function(x) length(x))) != 0)
+    
+    # This is handling multiple PCR products in multiple chromosomes
+    as.data.frame(rbindlist(lapply(chrom, function(x){
+    
+    prod_seq <- as.character(as.character(PCR_prod[[x]]))
+    start <-   start(PCR_prod[[x]])
+    end <-   end(PCR_prod[[x]])
+    width <-   width(PCR_prod[[x]])
+    efficiency <- names(as.character(PCR_prod[[x]]))
+    
+    df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = x, 
+                     "Amplicon_Start" = start, 
+                     "Amplicon_End" = end, 
+                     "Amplicon_length" = width, 
+                     "PCR_efficiency" = efficiency, 
+                     "Sequence" = prod_seq)
+    df
+    })))
+  
+  }
+  else{
+   df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = NA, 
+                     "Amplicon_Start" = NA, 
+                     "Amplicon_End" = NA, 
+                     "Amplicon_length" = NA, 
+                     "PCR_efficiency" = NA, 
+                     "Sequence" = NA)
+    df
+  }
+    
+  })
+
+
+Sys.time() - t
+
+m <- as.data.frame(rbindlist(in_silico_products))
+final_df <- merge(amplicons[c(range_start:range_end),], m, by = "UNIQID", all.x = TRUE, all.y = TRUE)
+
+write.csv(file=paste0("Amplicons_w_edge_coordinated_and_seq_over_all_chrom_GRCh37", "_", range_start, "_to_", range_end, ".csv"), final_df)
+
+```
+
+
+
+
+
+```{r}
+
+setwd("G:/Shared drives/Nord Lab - Data/SFRI00/ASD1000/ASD1KV5/Karol")
+
+in_silico_chrom <- read.csv("Amplicons_w_edge_coordinated_and_seq_1_to_1997.csv")
+
+a <- read.csv("Amplicons_w_edge_coordinated_and_seq_over_all_chrom_1_to_500.csv")
+b <- read.csv("Amplicons_w_edge_coordinated_and_seq_over_all_chrom_501_to_1200.csv")
+c <- read.csv("Amplicons_w_edge_coordinated_and_seq_over_all_chrom_1201_to_1300.csv")
+d <- read.csv("Amplicons_w_edge_coordinated_and_seq_over_all_chrom_1301_to_1997.csv")
+
+# I'm dropping "Duplicated_coordinates" column from b c and d, because it wasn't added to the amplicons object for a. I'll rerun that coordinate duplication algorithm and remerge below. 
+dim(a)
+dim(b[,-15])
+dim(c[,-15])
+dim(d[,-15])
+
+in_silico_all <- rbind(a, b[,-15], c[,-15], d[,-15])
+
+dim(amplicons)
+dim(ins_chrom)
+dim(in_silico_all)
+
+in_silico_chrom <- merge(amplicons[,c("UNIQID", "Duplicated_amp_coordinates")], in_silico_chrom[,-1], by = "UNIQID")
+in_silico_all <- merge(amplicons[,c("UNIQID", "Duplicated_amp_coordinates")], in_silico_all[,-1], by = "UNIQID")
+
+# Colnames and object names disambiguation
+## Objects 
+  ### amplicons - spreadsheet with 1997 rows of primers and SNV positions
+  ### in_silico_chrom - in silicon PCR results run within the expected chromosomes, produces 2049 amplicons
+  ### in_silico_all - in silicon PCR results run against all chromosomes, produces 2083 amplicons
+
+## Colnames
+  ### CHROMOSOME - Chromosome annotation as expected by the SNV location
+  ### Chr  - Chromosome predicted by in silicon PCR
+  ### "Ref_allele", "Var_allele" - extracted from UNIQID names
+  ### "START", "END" - SNV coordinate
+  ### START_STOP_seq - Sequence extracted from the chromosomesusing the SNV coordinates. It was used to check if the Ref allele represents the START or END SNV coordinate. For single base SNVs the END coordinate represents the correct SNV position: head(amplicons[,c("Ref_allele", "START_STOP_seq")], 30)
+
+# Checks how many times a UNIQID occurs, assigning consecutive numbers to replicates
+w <- lapply(unique(in_silico_all$UNIQID), function(x)
+{
+ #x <- "1045_9_70487469_C_T_11333.s1"
+   
+ d <- filter(in_silico_all, UNIQID == x)
+ n <- nrow(d) 
+ 
+ data.frame("UNIQID" = rep(x, n), "Cons_N" = seq(1,n))
+}
+  )
+
+w_df <- as.data.frame(rbindlist(w))
+
+dim(in_silico_all)
+dim(w_df)
+
+# For some reason merging doesn't work here ??
+#dim(merge(w_df, in_silico_all, by = "UNIQID", all.y=TRUE))
+
+# Sanity check
+all(in_silico_all$UNIQID == w_df$UNIQID)
+
+in_silico_all$Cons_N <- w_df$Cons_N
+
+
+
+# Test if the in silico product contains the SNV ( primary product) or is a by-product 
+# row 1609 has no PCR product, hence the provision for NAs
+
+PCR_classification <- sapply(1:nrow(in_silico_all), function(x){
+
+  if(!is.na(in_silico_all$Chr[x])){
+  
+  ifelse(in_silico_all$CHROMOSOME[x] == in_silico_all$Chr[x] & in_silico_all$END[x] %in% seq(in_silico_all$Amplicon_Start[x],in_silico_all$Amplicon_End[x]), "Primary_product", "Byproduct")
+  }
+  
+  else{
+    NA
+  }
+})
+
+in_silico_all$PCR_classification <- PCR_classification
+
+# Overview of amplicons with byproducts indicates that my annotations worked as eted
+#amplicons_w_byproducts <- filter(in_silico_all, PCR_classification == "Byproduct")$UNIQID
+#filter(in_silico_all, UNIQID %in% amplicons_w_byproducts)[,c(1,2,4,5,6,15,16,17,18,21,22)]
+
+
+# save.image("G:/Shared drives/Nord Lab - Data/SFRI00/ASD1000/ASD1KV5/Karol/Backup.RData")
+```
+
+
+
+# GRCh38
+
+## On predefined chromosomes
+
+```{r}
+####
+# This is very neat! Instead of looping through all primer pairs and chromosomes it only focuses on the chromosomes predetermined by primer3. It does not allow for any by-product discovery, but it's a great approach for getting end coordinates and amplicon seqs. It could be even faster if limited to regions ~ +/- 2kb from SNVs.
+
+setwd("G:/Shared drives/Nord Lab - Data/SFRI00/ASD1000/ASD1KV5/Karol")
+
+library(seqinr)
+library(DECIPHER)  # Requires dependencies. Read documentation.
+library(stringr)
+library(dplyr)
+library(parallel)
+library(data.table)
+library(matrixStats)
+library(ggplot2)
+library(ggdark)
+
+
+source("AmplifyDNA_3.R")
+
+# Reads amplicon metadata. Only P0 primers were ordered. [,c(1:9)] removes the other primer sets.
+amplicons <- read.table("2018-05-08_Combined-SFARI1000-Primers.txt", header = TRUE)[,c(1:9)]
+amplicons <- filter(amplicons, P0_Left != "." & P0_Right != ".") #Removes SNVs for which primer3 could not design
+
+# Primer pair list
+primers_2 <- lapply(1:nrow(amplicons), function(x) c(amplicons$P0_Left[x], amplicons$P0_Right[x], amplicons$CHROMOSOME[x], amplicons$UNIQID[x], amplicons$START[x]))
+
+# Reads chromosome reference files
+chr_1 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.1.fa.gz"), format="fasta")
+chr_2 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.2.fa.gz"), format="fasta")
+chr_3 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.3.fa.gz"), format="fasta")
+chr_4 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.4.fa.gz"), format="fasta")
+chr_5 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.5.fa.gz"), format="fasta")
+chr_6 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.6.fa.gz"), format="fasta")
+chr_7 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.7.fa.gz"), format="fasta")
+chr_8 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.8.fa.gz"), format="fasta")
+chr_9 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.9.fa.gz"), format="fasta")
+chr_10 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.10.fa.gz"), format="fasta")
+chr_11 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.11.fa.gz"), format="fasta")
+chr_12 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.12.fa.gz"), format="fasta")
+chr_13 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.13.fa.gz"), format="fasta")
+chr_14 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.14.fa.gz"), format="fasta")
+chr_15 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.15.fa.gz"), format="fasta")
+chr_16 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.16.fa.gz"), format="fasta")
+chr_17 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.17.fa.gz"), format="fasta")
+chr_18 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.18.fa.gz"), format="fasta")
+chr_19 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.19.fa.gz"), format="fasta")
+chr_20 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.20.fa.gz"), format="fasta")
+chr_21 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.21.fa.gz"), format="fasta")
+chr_22 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.22.fa.gz"), format="fasta")
+#chr_23 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.X.fa.gz"), #format="fasta")
+#chr_24 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.Y.fa.gz"), #format="fasta")
+
+chromosomes <- list(chr_1, chr_2, chr_3, chr_4, chr_5, chr_6, chr_7, chr_8, chr_9, chr_10, chr_11, chr_12, chr_13, chr_14, chr_15, chr_16, chr_17, chr_18, chr_19, chr_20, chr_21, chr_22)
+
+
+#I'll split the process saving the output into two files, with range indicators:
+PCR_in_silico_38 <- function(start, end) { 
+
+range_start = start
+range_end = end
+
+#range_end = nrow(amplicons)
+
+# In silicon function settings
+maxProductSize = 1500
+annealingTemp = 57 
+P = 4e-7
+ions = 0.2
+includePrimers = TRUE
+minEfficiency = 0.95
+
+
+# Performance notes
+# 2.817841 mins for 20 primers
+# 4.912082 min for 40 primers
+
+in_silico_products <- lapply(primers_2[range_start:range_end], function(y){
+  
+  expected_chrom <- as.numeric(y[[3]])
+  UNIQID <- y[[4]]
+  
+  # Thic can be used to limit seq to 5kb around SNV, but It messes up the genomic coordinates, :/
+  #expected_SNV_START <- as.numeric(y[[5]])
+  #substr(chromosomes[[expected_chrom]], expected_SNV_START - 5000, expected_SNV_START + 5000)
+  
+  PCR_prod <- AmplifyDNA_3(y[1:2], chromosomes[[expected_chrom]], 
+                maxProductSize = 1500, 
+                  annealingTemp = 60, 
+                      P = 4e-7,              # molar concentration of primers in the reaction
+                      ions = 0.2,            # molar sodium equivalent ionic concentration
+                      includePrimers = TRUE, 
+                      minEfficiency = 0.95)
+  
+  if ( any(str_length(as.character(PCR_prod))) == TRUE ) { # checks if there is any PCR prod  
+    prod_seq <- as.character(as.character(PCR_prod))
+    start <-   start(PCR_prod)
+    end <-   end(PCR_prod)
+    width <-   width(PCR_prod)
+    efficiency <- names(as.character(PCR_prod))
+    
+    df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = as.numeric(y[[3]]), 
+                     "Amplicon_Start" = start, 
+                     "Amplicon_End" = end, 
+                     "Amplicon_length" = width, 
+                     "PCR_efficiency" = efficiency, 
+                     "Sequence" = prod_seq)
+    df
+  }
+  else{
+   df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = NA, 
+                     "Amplicon_Start" = NA, 
+                     "Amplicon_End" = NA, 
+                     "Amplicon_length" = NA, 
+                     "PCR_efficiency" = NA, 
+                     "Sequence" = NA)
+    df
+  }
+})
+
+
+m <- as.data.frame(rbindlist(in_silico_products))
+
+final_df <- merge(amplicons[c(range_start:range_end),], m, by = "UNIQID", all.x = TRUE, all.y = TRUE)
+
+write.csv(file=paste0("Amplicons_w_edge_coordinates_and_seq_pre_def_chrom_GRCh38", "_", range_start, "_to_", range_end, ".csv"), final_df)
+
+}
+
+t <- Sys.time()
+
+PCR_in_silico_38(1, 1997)
+
+Sys.time() - t
+
+
+```
+
+
+## Approach II: Amplicon sequence finder running on all chromosomes 
+
+This approach is tested for handlign multiple PCR products
+
+```{r}
+
+library(seqinr)
+library(DECIPHER)
+library(stringr)
+library(dplyr)
+library(parallel)
+library(future.apply)
+
+source("AmplifyDNA_2.R")
+
+# Below is just for testing  how the function behaves with non unique amplicons.
+#non_unique_amplicons <- filter(amplicons, UNIQID %in% unique(dup_ID_df$UNIQID))
+#primers_3 <- lapply(1:nrow(non_unique_amplicons), function(x) c(non_unique_amplicons$P0_Left[x], #non_unique_amplicons$P0_Right[x], non_unique_amplicons$CHROMOSOME[x], #non_unique_amplicons$UNIQID[x]))  
+
+# Reads amplicon metadata. Only P0 primers were ordered. [,c(1:9)] removes the other primer sets.
+amplicons <- read.table("2018-05-08_Combined-SFARI1000-Primers.txt", header = TRUE)[,c(1:9)]
+amplicons <- filter(amplicons, P0_Left != "." & P0_Right != ".") #Removes SNVs for which primer3 could not design
+
+# Primer pair list
+primers_2 <- lapply(1:nrow(amplicons), function(x) c(amplicons$P0_Left[x], amplicons$P0_Right[x], amplicons$CHROMOSOME[x], amplicons$UNIQID[x], amplicons$START[x]))
+
+# Reads chromosome reference files
+chr_1 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.1.fa.gz"), format="fasta")
+chr_2 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.2.fa.gz"), format="fasta")
+chr_3 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.3.fa.gz"), format="fasta")
+chr_4 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.4.fa.gz"), format="fasta")
+chr_5 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.5.fa.gz"), format="fasta")
+chr_6 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.6.fa.gz"), format="fasta")
+chr_7 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.7.fa.gz"), format="fasta")
+chr_8 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.8.fa.gz"), format="fasta")
+chr_9 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.9.fa.gz"), format="fasta")
+chr_10 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.10.fa.gz"), format="fasta")
+chr_11 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.11.fa.gz"), format="fasta")
+chr_12 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.12.fa.gz"), format="fasta")
+chr_13 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.13.fa.gz"), format="fasta")
+chr_14 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.14.fa.gz"), format="fasta")
+chr_15 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.15.fa.gz"), format="fasta")
+chr_16 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.16.fa.gz"), format="fasta")
+chr_17 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.17.fa.gz"), format="fasta")
+chr_18 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.18.fa.gz"), format="fasta")
+chr_19 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.19.fa.gz"), format="fasta")
+chr_20 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.20.fa.gz"), format="fasta")
+chr_21 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.21.fa.gz"), format="fasta")
+chr_22 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.22.fa.gz"), format="fasta")
+chr_23 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.X.fa.gz"), format="fasta")
+chr_24 <- readDNAStringSet(filepath = c("Chromosomes_GRCh38/Homo_sapiens.GRCh38.dna_sm.chromosome.Y.fa.gz"), format="fasta")
+
+
+
+chromosomes <- list(chr_1, chr_2, chr_3, chr_4, chr_5, chr_6, chr_7, chr_8, chr_9, chr_10, chr_11, chr_12, chr_13, chr_14, chr_15, chr_16, chr_17, chr_18, chr_19, chr_20, chr_21, chr_22, chr_23, chr_24)
+
+
+#Global settings for future_apply
+options(future.globals.maxSize = +Inf)
+plan(multiprocess)
+  
+PCR_in_silico_38_all_chrom <- function(start, end) { 
+
+range_start = start
+range_end = end
+
+
+#It took 8.280362 hours to run the first 500  
+
+t <- Sys.time()
+
+in_silico_products <- lapply(primers_2[range_start:range_end], function(y){
+  
+  #y <- primers_3[[1]]  
+  
+  UNIQID <- y[4]
+
+  PCR_prod <- future_lapply(chromosomes, function(x) AmplifyDNA_2(y[1:2], x, 
+                      maxProductSize = 1500, 
+                      annealingTemp = 57, 
+                      P = 4e-7,              # molar concentration of primers in the reaction
+                      ions = 0.2,            # molar sodium equivalent ionic concentration
+                      includePrimers = TRUE, 
+                      minEfficiency = 0.90))  # The efficiency is set to a high value
+  
+  if ( any(str_length(as.character(PCR_prod))) == TRUE ) { # checks if there is any PCR prod  
+    
+    chrom <- which(unlist(lapply(PCR_prod, function(x) length(x))) != 0)
+    
+    # This is handling multiple PCR products in multiple chromosomes
+    as.data.frame(rbindlist(lapply(chrom, function(x){
+    
+    prod_seq <- as.character(as.character(PCR_prod[[x]]))
+    start <-   start(PCR_prod[[x]])
+    end <-   end(PCR_prod[[x]])
+    width <-   width(PCR_prod[[x]])
+    efficiency <- names(as.character(PCR_prod[[x]]))
+    
+    df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = x, 
+                     "Amplicon_Start" = start, 
+                     "Amplicon_End" = end, 
+                     "Amplicon_length" = width, 
+                     "PCR_efficiency" = efficiency, 
+                     "Sequence" = prod_seq)
+    df
+    })))
+  
+  }
+  else{
+   df <- data.frame("UNIQID" = UNIQID, 
+                     "Chr" = NA, 
+                     "Amplicon_Start" = NA, 
+                     "Amplicon_End" = NA, 
+                     "Amplicon_length" = NA, 
+                     "PCR_efficiency" = NA, 
+                     "Sequence" = NA)
+    df
+  }
+    
+  })
+
+
+Sys.time() - t
+
+m <- as.data.frame(rbindlist(in_silico_products))
+final_df <- merge(amplicons[c(range_start:range_end),], m, by = "UNIQID", all.x = TRUE, all.y = TRUE)
+
+write.csv(file=paste0("Amplicons_w_edge_coordinated_and_seq_over_all_chrom_GRCh38", "_", range_start, "_to_", range_end, ".csv"), final_df)
+}
+
+source(sdsd.R)
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(1, 250)
+Sys.time() - t
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(251, 500)
+Sys.time() - t
+
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(501, 750)
+Sys.time() - t
+
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(751, 1000)
+Sys.time() - t
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(1001, 1250)
+Sys.time() - t
+
+source("In_silico_PCR_GRCh38_local_job_test.R")
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(1251, 1500)
+Sys.time() - t
+
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(1501, 1750)
+Sys.time() - t
+
+
+t <- Sys.time()
+PCR_in_silico_38_all_chrom(1751, 1997)
+Sys.time() - t
+
+
+
+
+```
